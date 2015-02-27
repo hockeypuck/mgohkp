@@ -1,4 +1,4 @@
-package mongo
+package mgohkp
 
 import (
 	"bytes"
@@ -24,7 +24,10 @@ type storage struct {
 	dbName, collectionName string
 }
 
-func NewStorage(session *mgo.Session) (*storage, error) {
+var _ hkpstorage.Storage = (*storage)(nil)
+
+// NewStorage returns a MongoDB storage implementation for an HKP service.
+func NewStorage(session *mgo.Session) (hkpstorage.Storage, error) {
 	st := &storage{
 		Session:        session,
 		dbName:         defaultDBName,
@@ -276,6 +279,8 @@ func (st *storage) Update(key *openpgp.Pubkey, lastMD5 string) error {
 	panic("TODO")
 }
 
+// keywords returns a slice of searchable tokens extracted
+// from the given UserID packet keywords string.
 func keywords(key *openpgp.Pubkey) []string {
 	panic("TODO")
 }
