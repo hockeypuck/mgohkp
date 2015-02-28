@@ -3,7 +3,10 @@ package mgohkp
 import (
 	"bytes"
 	"strings"
+	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"gopkg.in/errgo.v1"
 	"gopkg.in/mgo.v2"
@@ -22,6 +25,9 @@ const (
 type storage struct {
 	*mgo.Session
 	dbName, collectionName string
+
+	mu        sync.Mutex
+	listeners []func(hkpstorage.KeyChange) error
 }
 
 var _ hkpstorage.Storage = (*storage)(nil)
@@ -258,37 +264,105 @@ func readOneKey(b []byte, rfingerprint string) (*openpgp.Pubkey, error) {
 }
 
 func (st *storage) Insert(keys []*openpgp.Pubkey) error {
-	var docs []interface{}
-	for _, key := range keys {
-		doc := &keyDoc{}
-		now := time.Now()
-		doc.CTime = now.Unix()
-		doc.MTime = now.Unix()
-		doc.RFingerprint = key.RFingerprint
-		doc.MD5 = key.MD5
-		doc.Keywords = keywords(key)
-		docs = append(docs, doc)
-	}
 	session, c := st.c()
 	defer session.Close()
 
-	return c.Insert(docs...)
+	for _, key := range keys {
+		var buf bytes.Buffer
+		err := openpgp.WritePackets(&buf, key)
+		if err != nil {
+			return errgo.Mask(err)
+		}
+
+		now := time.Now().Unix()
+		doc := keyDoc{
+			CTime:        now,
+			MTime:        now,
+			RFingerprint: key.RFingerprint,
+			MD5:          key.MD5,
+			Keywords:     keywords(key),
+			Packets:      buf.Bytes(),
+		}
+
+		err = c.Insert(&doc)
+		if err != nil {
+			return errgo.Mask(err)
+		}
+		st.Notify(hkpstorage.KeyAdded{
+			Digest: key.MD5,
+		})
+	}
+
+	return nil
 }
 
 func (st *storage) Update(key *openpgp.Pubkey, lastMD5 string) error {
-	panic("TODO")
+	var buf bytes.Buffer
+	err := openpgp.WritePackets(&buf, key)
+	if err != nil {
+		return errgo.Mask(err)
+	}
+
+	now := time.Now().Unix()
+	update := bson.D{{"$set", bson.D{
+		{"mtime", now},
+		{"keywords", keywords(key)},
+		{"packets", buf.Bytes()},
+	}}}
+
+	session, c := st.c()
+	defer session.Close()
+
+	var doc keyDoc
+	info, err := c.Find(bson.D{{"md5", lastMD5}}).Apply(mgo.Change{
+		Update: update,
+	}, &doc)
+	if err != nil {
+		return errgo.Mask(err)
+	}
+	if info.Updated == 0 {
+		return errgo.Newf("failed to update md5=%q, didn't match lastMD5=%q",
+			key.MD5, lastMD5)
+	}
+
+	st.Notify(hkpstorage.KeyReplaced{
+		OldDigest: lastMD5,
+		NewDigest: key.MD5,
+	})
+	return nil
 }
 
 // keywords returns a slice of searchable tokens extracted
 // from the given UserID packet keywords string.
 func keywords(key *openpgp.Pubkey) []string {
-	panic("TODO")
+	m := make(map[string]bool)
+	for _, uid := range key.UserIDs {
+		fields := strings.FieldsFunc(uid.Keywords, func(r rune) bool {
+			return !utf8.ValidRune(r) || (!unicode.IsLetter(r) && !unicode.IsNumber(r))
+		})
+		for _, field := range fields {
+			m[strings.ToLower(field)] = true
+		}
+	}
+	var result []string
+	for k := range m {
+		result = append(result, k)
+	}
+	return result
 }
 
-func (st *storage) Subscribe(func(hkpstorage.KeyChange) error) {
-	panic("TODO")
+func (st *storage) Subscribe(f func(hkpstorage.KeyChange) error) {
+	st.mu.Lock()
+	st.listeners = append(st.listeners, f)
+	st.mu.Unlock()
 }
 
 func (st *storage) Notify(change hkpstorage.KeyChange) error {
-	panic("TODO")
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	for _, f := range st.listeners {
+		// TODO: log error notifying listener?
+		f(change)
+	}
+	return nil
 }
