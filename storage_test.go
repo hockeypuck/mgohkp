@@ -50,7 +50,7 @@ var _ = gc.Suite(&MgoSuite{})
 func (s *MgoSuite) SetUpTest(c *gc.C) {
 	s.mgoSrv = mgotest.NewStartedServer(c)
 	s.session = s.mgoSrv.Session()
-	st, err := NewStorage(s.session)
+	st, err := New(s.session)
 	c.Assert(err, gc.IsNil)
 	s.storage = st.(*storage)
 

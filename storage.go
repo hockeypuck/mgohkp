@@ -49,12 +49,46 @@ type storage struct {
 
 var _ hkpstorage.Storage = (*storage)(nil)
 
-// NewStorage returns a MongoDB storage implementation for an HKP service.
-func NewStorage(session *mgo.Session) (hkpstorage.Storage, error) {
+// Option defines a function that can configure the storage.
+type Option func(*storage) error
+
+// DBName configures storage to use the given database name.
+func DBName(dbName string) Option {
+	return func(st *storage) error {
+		st.dbName = dbName
+		return nil
+	}
+}
+
+// CollectionName configures storage to use the given collection name.
+func CollectionName(collectionName string) Option {
+	return func(st *storage) error {
+		st.collectionName = collectionName
+		return nil
+	}
+}
+
+// Dial returns MongoDB HKP storage connected to the given URL.
+func Dial(url string, options ...Option) (hkpstorage.Storage, error) {
+	session, err := mgo.Dial(url)
+	if err != nil {
+		return nil, errgo.Mask(err)
+	}
+	return New(session, options...)
+}
+
+// New returns a MongoDB storage implementation for an HKP service.
+func New(session *mgo.Session, options ...Option) (hkpstorage.Storage, error) {
 	st := &storage{
 		Session:        session,
 		dbName:         defaultDBName,
 		collectionName: defaultCollectionName,
+	}
+	for _, option := range options {
+		err := option(st)
+		if err != nil {
+			return nil, err
+		}
 	}
 	err := st.createIndexes()
 	if err != nil {
