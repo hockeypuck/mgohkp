@@ -138,10 +138,10 @@ func (st *storage) Resolve(keyids []string) ([]string, error) {
 	var result []string
 	var doc keyDoc
 
-	var regexes []string
+	var regexes []interface{}
 	for _, keyid := range keyids {
 		if len(keyid) < maxFingerprintLen {
-			regexes = append(regexes, "/^"+keyid+"/")
+			regexes = append(regexes, bson.RegEx{Pattern: "^" + keyid})
 		} else {
 			result = append(result, keyid)
 		}
@@ -354,11 +354,24 @@ func (st *storage) Update(key *openpgp.Pubkey, lastMD5 string) error {
 func keywords(key *openpgp.Pubkey) []string {
 	m := make(map[string]bool)
 	for _, uid := range key.UserIDs {
-		fields := strings.FieldsFunc(uid.Keywords, func(r rune) bool {
-			return !utf8.ValidRune(r) || (!unicode.IsLetter(r) && !unicode.IsNumber(r))
-		})
-		for _, field := range fields {
-			m[strings.ToLower(field)] = true
+		s := strings.ToLower(uid.Keywords)
+		lbr, rbr := strings.Index(s, "<"), strings.LastIndex(s, ">")
+		if lbr != -1 && rbr > lbr {
+			m[s[lbr+1:rbr]] = true
+		}
+		if lbr != -1 {
+			fields := strings.FieldsFunc(s[:lbr], func(r rune) bool {
+				if !utf8.ValidRune(r) {
+					return true
+				}
+				if unicode.IsLetter(r) || unicode.IsNumber(r) {
+					return false
+				}
+				return true
+			})
+			for _, field := range fields {
+				m[field] = true
+			}
 		}
 	}
 	var result []string

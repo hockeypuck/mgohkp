@@ -124,3 +124,34 @@ func (s *MgoSuite) TestAddDuplicates(c *gc.C) {
 	c.Assert(err, gc.IsNil)
 	c.Assert(n, gc.Equals, 1)
 }
+
+func (s *MgoSuite) TestResolve(c *gc.C) {
+	res, err := http.Get(s.srv.URL + "/pks/lookup?op=get&search=0x44a2d1db")
+	c.Assert(err, gc.IsNil)
+	res.Body.Close()
+	c.Assert(err, gc.IsNil)
+	c.Assert(res.StatusCode, gc.Equals, http.StatusNotFound)
+
+	s.addKey(c, "uat.asc")
+	var doc keyDoc
+	session, coll := s.storage.c()
+	defer session.Close()
+	err = coll.Find(nil).One(&doc)
+	c.Assert(err, gc.IsNil)
+	c.Log(doc)
+
+	for _, search := range []string{"0x44a2d1db", "0xf79362da44a2d1db", "0x81279eee7ec89fb781702adaf79362da44a2d1db"} {
+		res, err = http.Get(s.srv.URL + "/pks/lookup?op=get&search=" + search)
+		c.Assert(err, gc.IsNil)
+		armor, err := ioutil.ReadAll(res.Body)
+		res.Body.Close()
+		c.Assert(err, gc.IsNil)
+		c.Assert(res.StatusCode, gc.Equals, http.StatusOK)
+
+		keys := openpgp.MustReadArmorKeys(bytes.NewBuffer(armor)).MustParse()
+		c.Assert(keys, gc.HasLen, 1)
+		c.Assert(keys[0].ShortID(), gc.Equals, "44a2d1db")
+		c.Assert(keys[0].UserIDs, gc.HasLen, 2)
+		c.Assert(keys[0].UserIDs[0].Keywords, gc.Equals, "Casey Marshall <casey.marshall@gazzang.com>")
+	}
+}
