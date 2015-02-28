@@ -292,6 +292,8 @@ func (st *storage) Insert(keys []*openpgp.Pubkey) error {
 	defer session.Close()
 
 	for _, key := range keys {
+		openpgp.Sort(key)
+
 		var buf bytes.Buffer
 		err := openpgp.WritePackets(&buf, key)
 		if err != nil {
@@ -321,6 +323,8 @@ func (st *storage) Insert(keys []*openpgp.Pubkey) error {
 }
 
 func (st *storage) Update(key *openpgp.Pubkey, lastMD5 string) error {
+	openpgp.Sort(key)
+
 	var buf bytes.Buffer
 	err := openpgp.WritePackets(&buf, key)
 	if err != nil {
@@ -330,6 +334,7 @@ func (st *storage) Update(key *openpgp.Pubkey, lastMD5 string) error {
 	now := time.Now().Unix()
 	update := bson.D{{"$set", bson.D{
 		{"mtime", now},
+		{"md5", key.MD5},
 		{"keywords", keywords(key)},
 		{"packets", buf.Bytes()},
 	}}}

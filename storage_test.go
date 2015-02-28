@@ -171,3 +171,27 @@ func (s *MgoSuite) TestResolve(c *gc.C) {
 		c.Assert(res.StatusCode, gc.Equals, http.StatusNotFound)
 	}
 }
+
+func (s *MgoSuite) TestMerge(c *gc.C) {
+	s.addKey(c, "alice_unsigned.asc")
+	s.addKey(c, "alice_signed.asc")
+
+	session, coll := s.storage.c()
+	defer session.Close()
+	n, err := coll.Find(nil).Count()
+	c.Assert(err, gc.IsNil)
+	c.Assert(n, gc.Equals, 1)
+
+	res, err := http.Get(s.srv.URL + "/pks/lookup?op=get&search=alice@example.com")
+	c.Assert(err, gc.IsNil)
+	armor, err := ioutil.ReadAll(res.Body)
+	res.Body.Close()
+	c.Assert(err, gc.IsNil)
+	c.Assert(res.StatusCode, gc.Equals, http.StatusOK)
+
+	keys := openpgp.MustReadArmorKeys(bytes.NewBuffer(armor)).MustParse()
+	c.Assert(keys, gc.HasLen, 1)
+	c.Assert(keys[0].ShortID(), gc.Equals, "23e0dcca")
+	c.Assert(keys[0].UserIDs, gc.HasLen, 1)
+	c.Assert(keys[0].UserIDs[0].Signatures, gc.HasLen, 2)
+}
