@@ -138,14 +138,14 @@ func (s *MgoSuite) TestResolve(c *gc.C) {
 	defer session.Close()
 	err = coll.Find(nil).One(&doc)
 	c.Assert(err, gc.IsNil)
-	c.Log(doc)
 
 	// Should match
 	for _, search := range []string{
 		// short, long and full fingerprint key IDs match
 		"0x44a2d1db", "0xf79362da44a2d1db", "0x81279eee7ec89fb781702adaf79362da44a2d1db",
 		// contiguous words and email addresses match
-		"casey", "marshall", "casey.marshall@gmail.com", "casey.marshall@gazzang.com"} {
+		"casey", "marshall", "casey+marshall", "cAseY+MArSHaLL",
+		"casey.marshall@gmail.com", "casey.marshall@gazzang.com"} {
 		res, err = http.Get(s.srv.URL + "/pks/lookup?op=get&search=" + search)
 		c.Assert(err, gc.IsNil)
 		armor, err := ioutil.ReadAll(res.Body)

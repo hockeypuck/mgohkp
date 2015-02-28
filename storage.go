@@ -165,14 +165,21 @@ func (st *storage) MatchKeyword(keywords []string) ([]string, error) {
 	session, c := st.c()
 	defer session.Close()
 
+	// Split these on spaces, to support multiple-word searches.
+	var match []string
 	for i := range keywords {
 		keywords[i] = strings.ToLower(keywords[i])
+		for _, part := range strings.Split(keywords[i], " ") {
+			if part != "" {
+				match = append(match, part)
+			}
+		}
 	}
 
 	var result []string
 	var doc keyDoc
 
-	iter := c.Find(bson.D{{"keywords", bson.D{{"$elemMatch", bson.D{{"$in", keywords}}}}}}).Limit(100).Iter()
+	iter := c.Find(bson.D{{"keywords", bson.D{{"$elemMatch", bson.D{{"$in", match}}}}}}).Limit(100).Iter()
 	for iter.Next(&doc) {
 		result = append(result, doc.RFingerprint)
 	}
