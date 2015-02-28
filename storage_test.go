@@ -163,7 +163,7 @@ func (s *MgoSuite) TestResolve(c *gc.C) {
 
 	// Shouldn't match any of these
 	for _, search := range []string{
-		"0xdeadbeef", "0xce353cf4", "0xadaf79362da44a2d1db",
+		"0xdeadbeef", "0xce353cf4", "0xd1db", "44a2d1db", "0xadaf79362da44a2d1db",
 		"alice@example.com", "bob@example.com", "marshal", "com"} {
 		res, err = http.Get(s.srv.URL + "/pks/lookup?op=get&search=" + search)
 		c.Assert(err, gc.IsNil)
