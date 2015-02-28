@@ -140,7 +140,12 @@ func (s *MgoSuite) TestResolve(c *gc.C) {
 	c.Assert(err, gc.IsNil)
 	c.Log(doc)
 
-	for _, search := range []string{"0x44a2d1db", "0xf79362da44a2d1db", "0x81279eee7ec89fb781702adaf79362da44a2d1db"} {
+	// Should match
+	for _, search := range []string{
+		// short, long and full fingerprint key IDs match
+		"0x44a2d1db", "0xf79362da44a2d1db", "0x81279eee7ec89fb781702adaf79362da44a2d1db",
+		// contiguous words and email addresses match
+		"casey", "marshall", "casey.marshall@gmail.com", "casey.marshall@gazzang.com"} {
 		res, err = http.Get(s.srv.URL + "/pks/lookup?op=get&search=" + search)
 		c.Assert(err, gc.IsNil)
 		armor, err := ioutil.ReadAll(res.Body)
@@ -152,6 +157,17 @@ func (s *MgoSuite) TestResolve(c *gc.C) {
 		c.Assert(keys, gc.HasLen, 1)
 		c.Assert(keys[0].ShortID(), gc.Equals, "44a2d1db")
 		c.Assert(keys[0].UserIDs, gc.HasLen, 2)
+		c.Assert(keys[0].UserAttributes, gc.HasLen, 1)
 		c.Assert(keys[0].UserIDs[0].Keywords, gc.Equals, "Casey Marshall <casey.marshall@gazzang.com>")
+	}
+
+	// Shouldn't match any of these
+	for _, search := range []string{
+		"0xdeadbeef", "0xce353cf4", "0xadaf79362da44a2d1db",
+		"alice@example.com", "bob@example.com", "marshal", "com"} {
+		res, err = http.Get(s.srv.URL + "/pks/lookup?op=get&search=" + search)
+		c.Assert(err, gc.IsNil)
+		res.Body.Close()
+		c.Assert(res.StatusCode, gc.Equals, http.StatusNotFound)
 	}
 }
