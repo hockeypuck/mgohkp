@@ -195,3 +195,30 @@ func (s *MgoSuite) TestMerge(c *gc.C) {
 	c.Assert(keys[0].UserIDs, gc.HasLen, 1)
 	c.Assert(keys[0].UserIDs[0].Signatures, gc.HasLen, 2)
 }
+
+func (s *MgoSuite) TestEd25519(c *gc.C) {
+	s.addKey(c, "e68e311d.asc")
+
+	// Should match, even if we don't fully support eddsa yet.
+	for _, search := range []string{
+		// short, long and full fingerprint key IDs match
+		"0xe68e311d", "0x8d7c6b1a49166a46ff293af2d4236eabe68e311d",
+		// contiguous words and email addresses match
+		"casey", "marshall", "casey+marshall", "cAseY+MArSHaLL",
+		"cmars@cmarstech.com", "casey.marshall@canonical.com"} {
+		res, err := http.Get(s.srv.URL + "/pks/lookup?op=get&search=" + search)
+		c.Assert(err, gc.IsNil)
+		armor, err := ioutil.ReadAll(res.Body)
+		res.Body.Close()
+		c.Assert(err, gc.IsNil)
+		c.Assert(res.StatusCode, gc.Equals, http.StatusOK)
+
+		keys := openpgp.MustReadArmorKeys(bytes.NewBuffer(armor)).MustParse()
+		c.Assert(keys, gc.HasLen, 1)
+		c.Assert(keys[0].ShortID(), gc.Equals, "e68e311d")
+		c.Assert(keys[0].UserIDs, gc.HasLen, 2)
+		c.Assert(keys[0].UserIDs[0].Keywords, gc.Equals, "Casey Marshall <casey.marshall@canonical.com>")
+		// crypto/openpgp doesn't yet understand ed25519 keys.
+		c.Assert(keys[0].Valid, gc.Equals, false)
+	}
+}

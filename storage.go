@@ -30,6 +30,7 @@ import (
 	"gopkg.in/mgo.v2/bson"
 
 	hkpstorage "gopkg.in/hockeypuck/hkp.v0/storage"
+	log "gopkg.in/hockeypuck/logrus.v0"
 	"gopkg.in/hockeypuck/openpgp.v0"
 )
 
@@ -436,6 +437,7 @@ func (st *storage) Subscribe(f func(hkpstorage.KeyChange) error) {
 func (st *storage) Notify(change hkpstorage.KeyChange) error {
 	st.mu.Lock()
 	defer st.mu.Unlock()
+	log.Debugf("%v", change)
 	for _, f := range st.listeners {
 		// TODO: log error notifying listener?
 		f(change)
