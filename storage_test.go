@@ -55,7 +55,8 @@ func (s *MgoSuite) SetUpTest(c *gc.C) {
 	s.storage = st.(*storage)
 
 	r := httprouter.New()
-	handler := hkp.NewHandler(s.storage)
+	handler, err := hkp.NewHandler(s.storage)
+	c.Assert(err, gc.IsNil)
 	handler.Register(r)
 	s.srv = httptest.NewServer(r)
 }
@@ -221,6 +222,6 @@ func (s *MgoSuite) TestEd25519(c *gc.C) {
 		c.Assert(keys[0].UserIDs, gc.HasLen, 2)
 		c.Assert(keys[0].UserIDs[0].Keywords, gc.Equals, "Casey Marshall <casey.marshall@canonical.com>")
 		// crypto/openpgp doesn't yet understand ed25519 keys.
-		c.Assert(keys[0].Valid, gc.Equals, false)
+		c.Assert(keys[0].Parsed, gc.Equals, false)
 	}
 }

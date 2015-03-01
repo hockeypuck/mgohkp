@@ -106,8 +106,7 @@ func (st *storage) createIndexes() error {
 		Key:    []string{"rfingerprint"},
 		Unique: true,
 	}, {
-		Key:    []string{"subkeys"},
-		Unique: true,
+		Key: []string{"subkeys"},
 	}, {
 		Key:    []string{"md5"},
 		Unique: true,
@@ -137,7 +136,7 @@ type keyDoc struct {
 	MD5          string   `bson:"md5"`
 	Packets      []byte   `bson:"packets"`
 	Keywords     []string `bson:"keywords"`
-	Subkeys      []string `bson:"subkeys"`
+	SubKeys      []string `bson:"subkeys"`
 }
 
 func (st *storage) MatchMD5(md5s []string) ([]string, error) {
@@ -198,7 +197,7 @@ func (st *storage) Resolve(keyids []string) ([]string, error) {
 
 		iter = c.Find(bson.D{{"subkeys", bson.D{{"$elemMatch", bson.D{{"$in", regexes}}}}}}).Iter()
 		for iter.Next(&doc) {
-			result = append(result, doc.Subkeys...)
+			result = append(result, doc.SubKeys...)
 		}
 		err = iter.Close()
 		if err != nil && err != mgo.ErrNotFound {
@@ -257,7 +256,7 @@ func (st *storage) ModifiedSince(t time.Time) ([]string, error) {
 	return result, nil
 }
 
-func (st *storage) FetchKeys(rfps []string) ([]*openpgp.Pubkey, error) {
+func (st *storage) FetchKeys(rfps []string) ([]*openpgp.PrimaryKey, error) {
 	session, c := st.c()
 	defer session.Close()
 
@@ -265,7 +264,7 @@ func (st *storage) FetchKeys(rfps []string) ([]*openpgp.Pubkey, error) {
 		rfps[i] = strings.ToLower(rfps[i])
 	}
 
-	var result []*openpgp.Pubkey
+	var result []*openpgp.PrimaryKey
 	var doc keyDoc
 
 	iter := c.Find(bson.D{{"rfingerprint", bson.D{{"$in", rfps}}}}).Limit(100).Iter()
@@ -315,9 +314,9 @@ func (st *storage) FetchKeyrings(rfps []string) ([]*hkpstorage.Keyring, error) {
 			return nil, errgo.Mask(err)
 		}
 		result = append(result, &hkpstorage.Keyring{
-			Pubkey: pubkey,
-			CTime:  time.Unix(doc.CTime, 0),
-			MTime:  time.Unix(doc.MTime, 0),
+			PrimaryKey: pubkey,
+			CTime:      time.Unix(doc.CTime, 0),
+			MTime:      time.Unix(doc.MTime, 0),
 		})
 	}
 	err := iter.Close()
@@ -327,13 +326,13 @@ func (st *storage) FetchKeyrings(rfps []string) ([]*hkpstorage.Keyring, error) {
 	return result, nil
 }
 
-func readOneKey(b []byte, rfingerprint string) (*openpgp.Pubkey, error) {
+func readOneKey(b []byte, rfingerprint string) (*openpgp.PrimaryKey, error) {
 	c := openpgp.ReadKeys(bytes.NewBuffer(b))
 	defer func() {
 		for _ = range c {
 		}
 	}()
-	var result *openpgp.Pubkey
+	var result *openpgp.PrimaryKey
 	for readKey := range c {
 		if readKey.Error != nil {
 			return nil, errgo.Mask(readKey.Error)
@@ -341,16 +340,16 @@ func readOneKey(b []byte, rfingerprint string) (*openpgp.Pubkey, error) {
 		if result != nil {
 			return nil, errgo.Newf("multiple keys in keyring: %v, %v", result.Fingerprint(), readKey.Fingerprint())
 		}
-		if readKey.Pubkey.RFingerprint != rfingerprint {
+		if readKey.PrimaryKey.RFingerprint != rfingerprint {
 			return nil, errgo.Newf("RFingerprint mismatch: expected=%q got=%q",
-				rfingerprint, readKey.Pubkey.RFingerprint)
+				rfingerprint, readKey.PrimaryKey.RFingerprint)
 		}
-		result = readKey.Pubkey
+		result = readKey.PrimaryKey
 	}
 	return result, nil
 }
 
-func (st *storage) Insert(keys []*openpgp.Pubkey) error {
+func (st *storage) Insert(keys []*openpgp.PrimaryKey) error {
 	session, c := st.c()
 	defer session.Close()
 
@@ -371,7 +370,7 @@ func (st *storage) Insert(keys []*openpgp.Pubkey) error {
 			MD5:          key.MD5,
 			Keywords:     keywords(key),
 			Packets:      buf.Bytes(),
-			Subkeys:      subkeys(key),
+			SubKeys:      subkeys(key),
 		}
 
 		err = c.Insert(&doc)
@@ -386,7 +385,7 @@ func (st *storage) Insert(keys []*openpgp.Pubkey) error {
 	return nil
 }
 
-func (st *storage) Update(key *openpgp.Pubkey, lastMD5 string) error {
+func (st *storage) Update(key *openpgp.PrimaryKey, lastMD5 string) error {
 	openpgp.Sort(key)
 
 	var buf bytes.Buffer
@@ -428,7 +427,7 @@ func (st *storage) Update(key *openpgp.Pubkey, lastMD5 string) error {
 
 // keywords returns a slice of searchable tokens extracted
 // from the given UserID packet keywords string.
-func keywords(key *openpgp.Pubkey) []string {
+func keywords(key *openpgp.PrimaryKey) []string {
 	m := make(map[string]bool)
 	for _, uid := range key.UserIDs {
 		s := strings.ToLower(uid.Keywords)
@@ -458,9 +457,9 @@ func keywords(key *openpgp.Pubkey) []string {
 	return result
 }
 
-func subkeys(key *openpgp.Pubkey) []string {
+func subkeys(key *openpgp.PrimaryKey) []string {
 	var result []string
-	for _, subkey := range key.Subkeys {
+	for _, subkey := range key.SubKeys {
 		result = append(result, subkey.RFingerprint)
 	}
 	return result
