@@ -143,6 +143,8 @@ func (s *MgoSuite) TestResolve(c *gc.C) {
 	for _, search := range []string{
 		// short, long and full fingerprint key IDs match
 		"0x44a2d1db", "0xf79362da44a2d1db", "0x81279eee7ec89fb781702adaf79362da44a2d1db",
+		// as do subkeys
+		"0xdb769d16cdb9ad53", "0xe9ebaf4195c1826c", "0x6cdc23d76cba8ca9",
 		// contiguous words and email addresses match
 		"casey", "marshall", "casey+marshall", "cAseY+MArSHaLL",
 		"casey.marshall@gmail.com", "casey.marshall@gazzang.com"} {

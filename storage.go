@@ -106,6 +106,9 @@ func (st *storage) createIndexes() error {
 		Key:    []string{"rfingerprint"},
 		Unique: true,
 	}, {
+		Key:    []string{"subkeys"},
+		Unique: true,
+	}, {
 		Key:    []string{"md5"},
 		Unique: true,
 	}, {
@@ -134,6 +137,7 @@ type keyDoc struct {
 	MD5          string   `bson:"md5"`
 	Packets      []byte   `bson:"packets"`
 	Keywords     []string `bson:"keywords"`
+	Subkeys      []string `bson:"subkeys"`
 }
 
 func (st *storage) MatchMD5(md5s []string) ([]string, error) {
@@ -188,9 +192,19 @@ func (st *storage) Resolve(keyids []string) ([]string, error) {
 			result = append(result, doc.RFingerprint)
 		}
 		err := iter.Close()
-		if err != nil {
+		if err != nil && err != mgo.ErrNotFound {
 			return nil, errgo.Mask(err)
 		}
+
+		iter = c.Find(bson.D{{"subkeys", bson.D{{"$elemMatch", bson.D{{"$in", regexes}}}}}}).Iter()
+		for iter.Next(&doc) {
+			result = append(result, doc.Subkeys...)
+		}
+		err = iter.Close()
+		if err != nil && err != mgo.ErrNotFound {
+			return nil, errgo.Mask(err)
+		}
+
 	}
 
 	return result, nil
@@ -263,9 +277,23 @@ func (st *storage) FetchKeys(rfps []string) ([]*openpgp.Pubkey, error) {
 		result = append(result, pubkey)
 	}
 	err := iter.Close()
-	if err != nil {
+	if err != nil && err != mgo.ErrNotFound {
 		return nil, errgo.Mask(err)
 	}
+
+	iter = c.Find(bson.D{{"subkeys", bson.D{{"$elemMatch", bson.D{{"$in", rfps}}}}}}).Limit(100).Iter()
+	for iter.Next(&doc) {
+		pubkey, err := readOneKey(doc.Packets, doc.RFingerprint)
+		if err != nil {
+			return nil, errgo.Mask(err)
+		}
+		result = append(result, pubkey)
+	}
+	err = iter.Close()
+	if err != nil && err != mgo.ErrNotFound {
+		return nil, errgo.Mask(err)
+	}
+
 	return result, nil
 }
 
@@ -343,6 +371,7 @@ func (st *storage) Insert(keys []*openpgp.Pubkey) error {
 			MD5:          key.MD5,
 			Keywords:     keywords(key),
 			Packets:      buf.Bytes(),
+			Subkeys:      subkeys(key),
 		}
 
 		err = c.Insert(&doc)
@@ -372,6 +401,7 @@ func (st *storage) Update(key *openpgp.Pubkey, lastMD5 string) error {
 		{"md5", key.MD5},
 		{"keywords", keywords(key)},
 		{"packets", buf.Bytes()},
+		{"subkeys", subkeys(key)},
 	}}}
 
 	session, c := st.c()
@@ -424,6 +454,14 @@ func keywords(key *openpgp.Pubkey) []string {
 	var result []string
 	for k := range m {
 		result = append(result, k)
+	}
+	return result
+}
+
+func subkeys(key *openpgp.Pubkey) []string {
+	var result []string
+	for _, subkey := range key.Subkeys {
+		result = append(result, subkey.RFingerprint)
 	}
 	return result
 }
