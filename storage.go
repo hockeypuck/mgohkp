@@ -349,17 +349,29 @@ func readOneKey(b []byte, rfingerprint string) (*openpgp.PrimaryKey, error) {
 	return result, nil
 }
 
+type errors []error
+
+func (errs errors) Error() string {
+	var msgs []string
+	for _, err := range errs {
+		msgs = append(msgs, errgo.Details(err))
+	}
+	return strings.Join(msgs, "\n")
+}
+
 func (st *storage) Insert(keys []*openpgp.PrimaryKey) error {
 	session, c := st.c()
 	defer session.Close()
 
+	var errs errors
 	for _, key := range keys {
 		openpgp.Sort(key)
 
 		var buf bytes.Buffer
 		err := openpgp.WritePackets(&buf, key)
 		if err != nil {
-			return errgo.Mask(err)
+			errs = append(errs, errgo.Notef(err, "cannot serialize rfp=%q", key.RFingerprint))
+			continue
 		}
 
 		now := time.Now().Unix()
@@ -375,13 +387,17 @@ func (st *storage) Insert(keys []*openpgp.PrimaryKey) error {
 
 		err = c.Insert(&doc)
 		if err != nil {
-			return errgo.Mask(err)
+			errs = append(errs, errgo.Notef(err, "cannot insert rfp=%q", key.RFingerprint))
+			continue
 		}
 		st.Notify(hkpstorage.KeyAdded{
 			Digest: key.MD5,
 		})
 	}
 
+	if len(errs) > 0 {
+		return errs
+	}
 	return nil
 }
 
