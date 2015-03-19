@@ -349,28 +349,19 @@ func readOneKey(b []byte, rfingerprint string) (*openpgp.PrimaryKey, error) {
 	return result, nil
 }
 
-type errors []error
-
-func (errs errors) Error() string {
-	var msgs []string
-	for _, err := range errs {
-		msgs = append(msgs, errgo.Details(err))
-	}
-	return strings.Join(msgs, "\n")
-}
-
-func (st *storage) Insert(keys []*openpgp.PrimaryKey) error {
+func (st *storage) Insert(keys []*openpgp.PrimaryKey) (int, error) {
 	session, c := st.c()
 	defer session.Close()
 
-	var errs errors
+	var n int
+	var result hkpstorage.InsertError
 	for _, key := range keys {
 		openpgp.Sort(key)
 
 		var buf bytes.Buffer
 		err := openpgp.WritePackets(&buf, key)
 		if err != nil {
-			errs = append(errs, errgo.Notef(err, "cannot serialize rfp=%q", key.RFingerprint))
+			result.Errors = append(result.Errors, errgo.Notef(err, "cannot serialize rfp=%q", key.RFingerprint))
 			continue
 		}
 
@@ -387,18 +378,23 @@ func (st *storage) Insert(keys []*openpgp.PrimaryKey) error {
 
 		err = c.Insert(&doc)
 		if err != nil {
-			errs = append(errs, errgo.Notef(err, "cannot insert rfp=%q", key.RFingerprint))
+			if mgo.IsDup(err) {
+				result.Duplicates = append(result.Duplicates, key)
+			} else {
+				result.Errors = append(result.Errors, errgo.Notef(err, "cannot insert rfp=%q", key.RFingerprint))
+			}
 			continue
 		}
 		st.Notify(hkpstorage.KeyAdded{
 			Digest: key.MD5,
 		})
+		n++
 	}
 
-	if len(errs) > 0 {
-		return errs
+	if len(result.Duplicates) > 0 || len(result.Errors) > 0 {
+		return n, result
 	}
-	return nil
+	return n, nil
 }
 
 func (st *storage) Update(key *openpgp.PrimaryKey, lastMD5 string) error {
@@ -494,6 +490,26 @@ func (st *storage) Notify(change hkpstorage.KeyChange) error {
 	for _, f := range st.listeners {
 		// TODO: log error notifying listener?
 		f(change)
+	}
+	return nil
+}
+
+func (st *storage) RenotifyAll() error {
+	session, c := st.c()
+	defer session.Close()
+
+	var result struct {
+		MD5 string `bson:"md5"`
+	}
+
+	q := c.Find(nil).Select(bson.D{{"md5", 1}})
+	iter := q.Iter()
+	for iter.Next(&result) {
+		st.Notify(hkpstorage.KeyAdded{Digest: result.MD5})
+	}
+	err := iter.Close()
+	if err != nil {
+		return errgo.Mask(err)
 	}
 	return nil
 }
