@@ -124,6 +124,11 @@ func (st *storage) createIndexes() error {
 	return nil
 }
 
+func (st *storage) Close() error {
+	st.Session.Close()
+	return nil
+}
+
 func (st *storage) c() (*mgo.Session, *mgo.Collection) {
 	session := st.Session.Copy()
 	return session, session.DB(st.dbName).C(st.collectionName)
