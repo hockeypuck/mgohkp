@@ -29,9 +29,9 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
-	hkpstorage "gopkg.in/hockeypuck/hkp.v0/storage"
+	hkpstorage "gopkg.in/hockeypuck/hkp.v1/storage"
 	log "gopkg.in/hockeypuck/logrus.v0"
-	"gopkg.in/hockeypuck/openpgp.v0"
+	"gopkg.in/hockeypuck/openpgp.v1"
 )
 
 const (

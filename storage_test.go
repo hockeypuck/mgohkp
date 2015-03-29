@@ -32,8 +32,8 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
-	"gopkg.in/hockeypuck/hkp.v0"
-	"gopkg.in/hockeypuck/openpgp.v0"
+	"gopkg.in/hockeypuck/hkp.v1"
+	"gopkg.in/hockeypuck/openpgp.v1"
 )
 
 func Test(t *stdtesting.T) { gc.TestingT(t) }
