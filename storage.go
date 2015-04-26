@@ -271,6 +271,7 @@ func (st *storage) FetchKeys(rfps []string) ([]*openpgp.PrimaryKey, error) {
 
 	var result []*openpgp.PrimaryKey
 	var doc keyDoc
+	fps := make(map[string]bool)
 
 	iter := c.Find(bson.D{{"rfingerprint", bson.D{{"$in", rfps}}}}).Limit(100).Iter()
 	for iter.Next(&doc) {
@@ -278,6 +279,7 @@ func (st *storage) FetchKeys(rfps []string) ([]*openpgp.PrimaryKey, error) {
 		if err != nil {
 			return nil, errgo.Mask(err)
 		}
+		fps[pubkey.RFingerprint] = true
 		result = append(result, pubkey)
 	}
 	err := iter.Close()
@@ -291,7 +293,12 @@ func (st *storage) FetchKeys(rfps []string) ([]*openpgp.PrimaryKey, error) {
 		if err != nil {
 			return nil, errgo.Mask(err)
 		}
-		result = append(result, pubkey)
+		if !fps[pubkey.RFingerprint] {
+			// Only add to result if we don't already have it. Some keys may
+			// have used the same key material for a subkey (even though that's
+			// not such a great idea).
+			result = append(result, pubkey)
+		}
 	}
 	err = iter.Close()
 	if err != nil && err != mgo.ErrNotFound {
