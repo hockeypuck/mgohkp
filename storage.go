@@ -516,8 +516,14 @@ func (st *storage) RenotifyAll() error {
 
 	q := c.Find(nil).Select(bson.D{{"md5", 1}})
 	iter := q.Iter()
-	for iter.Next(&result) {
-		st.Notify(hkpstorage.KeyAdded{Digest: result.MD5})
+	for {
+		if iter.Next(&result) {
+			st.Notify(hkpstorage.KeyAdded{Digest: result.MD5})
+		} else if iter.Timeout() {
+			continue
+		} else {
+			break
+		}
 	}
 	err := iter.Close()
 	if err != nil {
