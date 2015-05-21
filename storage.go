@@ -514,14 +514,32 @@ func (st *storage) RenotifyAll() error {
 		MD5 string `bson:"md5"`
 	}
 
-	q := c.Find(nil).Select(bson.D{{"md5", 1}})
-	iter := q.Iter()
-	for iter.Next(&result) {
-		st.Notify(hkpstorage.KeyAdded{Digest: result.MD5})
-	}
-	err := iter.Close()
-	if err != nil {
-		return errgo.Mask(err)
+	var lastMD5 string
+	for {
+		var where bson.D
+		if lastMD5 != "" {
+			where = bson.D{{"md5", bson.D{{"$gt", lastMD5}}}}
+		}
+		q := c.Find(where).Select(bson.D{{"md5", 1}}).Sort("md5")
+		iter := q.Iter()
+		for {
+			if iter.Next(&result) {
+				st.Notify(hkpstorage.KeyAdded{Digest: result.MD5})
+				lastMD5 = result.MD5
+			} else if iter.Timeout() {
+				continue
+			} else {
+				break
+			}
+		}
+		err := iter.Close()
+		if err == mgo.ErrCursor {
+			continue
+		} else if err != nil {
+			return errgo.Mask(err)
+		} else {
+			break
+		}
 	}
 	return nil
 }
